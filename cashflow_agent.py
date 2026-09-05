@@ -42,4 +42,6 @@ else:
     st.write("2. **Build Reserve**: Set aside 3-6 months of expenses as an emergency fund.")
     st.write("3. **Plan Expansion**: You have room to scale operations or marketing.")
 
-st.markdown("---"). Is this code usefull
+st.markdown("---")
+
+
