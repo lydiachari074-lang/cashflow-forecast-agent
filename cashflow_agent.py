@@ -1,75 +1,45 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
+# --- STEP 3: ASSESS FINANCIAL RISK & GENERATE RECOMMENDATIONS ---
+st.markdown("### ⚠️ Step 3: Assess Financial Risk & Recommendations")
 
-st.set_page_config(page_title="Cash Flow Forecasting Agent", layout="wide")
-st.title("💰 AI Cash Flow Forecasting Agent")
-st.write("Upload your income and expense data. The agent will forecast cash flow and flag risks.")
+# Get last forecasted cumulative cash
+last_forecast_cash = forecast_df['Cumulative Cash'].iloc[-1]
+last_actual_cash = df['Cumulative Cash'].iloc[-1]
 
-# STEP 1: READ INPUT
-uploaded_file = st.file_uploader("Upload CSV with columns: Date, Income, Expenses", type=["csv", "xlsx"])
+col1, col2 = st.columns(2)
 
-if uploaded_file:
-    if uploaded_file.name.endswith('.csv'):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
-    
-    df['Date'] = pd.to_datetime(df['Date'])
-    df = df.sort_values('Date')
-    df['Net Cash Flow'] = df['Income'] - df['Expenses']
-    df['Cumulative Cash'] = df['Net Cash Flow'].cumsum()
-    
-    st.subheader("1. Your Data Analysis")
-    st.dataframe(df)
-    
-    # STEP 2: ANALYZE + FORECAST
-    st.subheader("2. 3-Month Cash Flow Forecast")
-    
-    avg_income = df['Income'].mean()
-    avg_expense = df['Expenses'].mean()
-    last_cumulative = df['Cumulative Cash'].iloc[-1]
-    last_date = df['Date'].iloc[-1]
-    
-    forecast_dates = [last_date + timedelta(days=30*i) for i in range(1,4)]
-    forecast_net = [avg_income - avg_expense] * 3
-    forecast_cumulative = []
-    
-    running_total = last_cumulative
-    for net in forecast_net:
-        running_total += net
-        forecast_cumulative.append(running_total)
-    
-    forecast_df = pd.DataFrame({
-        'Date': forecast_dates,
-        'Forecasted Net Cash Flow': forecast_net,
-        'Forecasted Cumulative Cash': forecast_cumulative
-    })
-    
-    st.dataframe(forecast_df)
-    
-    # STEP 3: DECIDE / FLAG
-    st.subheader("3. Risk Assessment")
-    if forecast_cumulative[-1] < 0:
-        st.error("🚨 CASH SHORTAGE RISK: Forecast shows negative cash in 3 months. Recommendation: Reduce expenses or secure funding.")
-    elif forecast_cumulative[-1] < last_cumulative * 0.5:
-        st.warning("⚠️ WARNING: Cash is projected to drop by over 50%. Recommendation: Review spending.")
-    else:
-        st.success("✅ HEALTHY: Cash position is projected to remain stable.")
-    
-    # STEP 4: PRODUCE OUTPUT - CHART
-    st.subheader("4. Cash Flow Visualization")
-    fig, ax = plt.subplots(figsize=(10,5))
-    ax.plot(df['Date'], df['Cumulative Cash'], label='Historical Cash', marker='o')
-    ax.plot(forecast_df['Date'], forecast_df['Forecasted Cumulative Cash'], label='Forecast', linestyle='--', marker='x')
-    ax.axhline(0, color='red', linestyle=':')
-    ax.set_ylabel("Cumulative Cash")
-    ax.legend()
-    ax.grid(True)
-    st.pyplot(fig)
+with col1:
+    st.metric("Current Cash Balance", f"${last_actual_cash:,.2f}")
+with col2:
+    st.metric("Forecasted Cash in 3 Months", f"${last_forecast_cash:,.2f}")
 
+# Risk Assessment Logic
+st.markdown("#### Risk Assessment")
+if last_forecast_cash < 0:
+    st.error("🔴 **RISK CONDITION FLAGGED: AT RISK**")
+    st.write("Projected cumulative cash is negative. The business may run out of cash in the next 3 months.")
+    risk_level = "AT RISK"
+elif last_forecast_cash < last_actual_cash * 0.5:
+    st.warning("🟡 **RISK CONDITION FLAGGED: CAUTION**")
+    st.write("Projected cash is dropping significantly. Monitor expenses closely.")
+    risk_level = "CAUTION"
 else:
-    st.info("Please upload a CSV or Excel file to start the agent.")
-    st.write("**Sample format:** Date, Income, Expenses")
+    st.success("🟢 **RISK CONDITION: HEALTHY**")
+    st.write("Cash position is projected to remain stable and positive.")
+    risk_level = "HEALTHY"
+
+# Generate Recommendations based on risk
+st.markdown("#### 🤖 Agent Recommendations")
+if risk_level == "AT RISK":
+    st.write("1. **Reduce Expenses**: Identify and cut non-essential costs immediately.")
+    st.write("2. **Increase Income**: Launch promotions or chase outstanding invoices.")
+    st.write("3. **Secure Funding**: Consider a short-term loan or overdraft facility.")
+elif risk_level == "CAUTION":
+    st.write("1. **Monitor Closely**: Review weekly cash flow reports.")
+    st.write("2. **Delay Big Purchases**: Postpone large capital expenses.")
+    st.write("3. **Negotiate Terms**: Ask suppliers for extended payment terms.")
+else:
+    st.write("1. **Reinvest**: Consider investing surplus cash for growth.")
+    st.write("2. **Build Reserve**: Set aside 3-6 months of expenses as an emergency fund.")
+    st.write("3. **Plan Expansion**: You have room to scale operations or marketing.")
+
+st.markdown("---"). Is this code usefull
