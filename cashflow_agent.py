@@ -7,9 +7,8 @@ from datetime import datetime, timedelta, date
 st.set_page_config(page_title="AI Cash Flow Agent", layout="wide")
 st.title("🤖 AI Cash Flow Forecasting Agent for SMEs")
 
-# --- FUNCTION TO SIMULATE BANK/ECOCASH DATA ---
+# --- SIMULATED DATA FUNCTIONS ---
 def load_bank_data():
-    # This simulates pulling last 4 months from a bank
     data = {
         'Date': pd.date_range(end=date.today(), periods=4, freq='M'),
         'Income': [6000, 6500, 5800, 7200],
@@ -19,7 +18,6 @@ def load_bank_data():
     return pd.DataFrame(data)
 
 def load_ecocash_data():
-    # This simulates pulling from Ecocash statement
     data = {
         'Date': pd.date_range(end=date.today(), periods=4, freq='M'),
         'Income': [1500, 2200, 1800, 2500],
@@ -28,27 +26,40 @@ def load_ecocash_data():
     }
     return pd.DataFrame(data)
 
-# --- 1. CORE: DATA CONNECTORS / INPUTS ---
+def load_sample_data():
+    return pd.read_csv("sample_data.csv")
+
+# --- SESSION STATE TO REMEMBER DATA ---
+if 'df' not in st.session_state:
+    st.session_state.df = load_sample_data()
+if 'data_source' not in st.session_state:
+    st.session_state.data_source = 'Upload CSV/Excel'
+
+# --- SIDEBAR ---
 st.sidebar.header("A. Data Connectors / Inputs")
 
 data_source = st.sidebar.radio(
     "1. Choose Data Source:",
-    ('Upload CSV/Excel', 'Manual Input Form', 'Connect Bank', 'Connect Ecocash')
+    ('Upload CSV/Excel', 'Manual Input Form', 'Connect Bank', 'Connect Ecocash'),
+    key='source_radio'
 )
+st.session_state.data_source = data_source
 
-df = pd.DataFrame()
+df = st.session_state.df
 
 if data_source == 'Upload CSV/Excel':
     uploaded_file = st.sidebar.file_uploader("Upload from Excel/Sheets", type=["csv", "xlsx"])
     if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file, engine='openpyxl')
-    else:
-        df = pd.read_csv("sample_data.csv") 
+        if uploaded_file.name.endswith('.csv'):
+            st.session_state.df = pd.read_csv(uploaded_file)
+        else:
+            st.session_state.df = pd.read_excel(uploaded_file, engine='openpyxl')
+        st.rerun()
 
 elif data_source == 'Manual Input Form':
     st.sidebar.info("For cash sales, future expected income/expenses")
     if 'manual_df' not in st.session_state:
-        st.session_state.manual_df = pd.read_csv("sample_data.csv")
+        st.session_state.manual_df = load_sample_data()
     
     with st.sidebar.form("manual_input", clear_on_submit=True):
         date_in = st.date_input("Date")
@@ -58,27 +69,28 @@ elif data_source == 'Manual Input Form':
         if submitted:
             new_row = pd.DataFrame({'Date':[date_in], 'Income':[income], 'Expenses':[expense]})
             st.session_state.manual_df = pd.concat([st.session_state.manual_df, new_row], ignore_index=True)
+            st.session_state.df = st.session_state.manual_df
             st.success("Row Added!")
-    df = st.session_state.manual_df
+            st.rerun()
+    df = st.session_state.df
 
 elif data_source == 'Connect Bank':
-    st.sidebar.success("✅ Connected to Bank Account - Demo")
-    st.sidebar.info("How it works: In real app, we use Bank API to pull transactions automatically")
+    st.sidebar.success("✅ Bank Account Connected - Demo Mode")
+    st.sidebar.info("In real app: Uses Bank API to pull transactions")
     if st.sidebar.button("🔄 Sync Latest Bank Transactions"):
-        df = load_bank_data()
-        st.sidebar.success("4 Bank transactions imported!")
-    else:
-        df = load_bank_data() # load default
+        st.session_state.df = load_bank_data()
+        st.success("Bank transactions synced!")
+        st.rerun()
 
 elif data_source == 'Connect Ecocash':
-    st.sidebar.success("✅ Connected to Ecocash - Demo")
-    st.sidebar.info("How it works: In real app, we use Ecocash API to pull merchant payments")
+    st.sidebar.success("✅ Ecocash Account Connected - Demo Mode")
+    st.sidebar.info("In real app: Uses Ecocash API to pull merchant payments")
     if st.sidebar.button("🔄 Sync Latest Ecocash Transactions"):
-        df = load_ecocash_data()
-        st.sidebar.success("4 Ecocash transactions imported!")
-    else:
-        df = load_ecocash_data() # load default
+        st.session_state.df = load_ecocash_data()
+        st.success("Ecocash transactions synced!")
+        st.rerun()
 
+df = st.session_state.df
 
 # --- PROCESS DATA & FORECAST ---
 df['Date'] = pd.to_datetime(df['Date'])
@@ -100,7 +112,7 @@ tab0, tab1, tab2, tab3, tab4 = st.tabs([
 
 with tab0:
     st.header("A. Data Connectors / Inputs")
-    st.write("**Current source:**", data_source)
+    st.write("**Current source:**", st.session_state.data_source)
     col1, col2, col3, col4 = st.columns(4)
     col1.success("1. Bank/API: Connected")
     col2.info("2. Accounting: Quickbooks, Xero, Excel")
@@ -136,6 +148,5 @@ with tab3:
 
 with tab4:
     st.header("⚡ AI Action Tools")
-    if avg_net_cash < 0:
-        st.button("✉️ Email Client to Pay Invoice")
-        st.button("⏰ Suggest Delaying Expense")
+    st.button("✉️ Email Client to Pay Invoice")
+    st.button("⏰ Suggest Delaying Expense")
