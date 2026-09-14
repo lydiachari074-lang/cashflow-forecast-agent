@@ -7,7 +7,16 @@ from datetime import datetime, timedelta, date
 st.set_page_config(page_title="AI Cash Flow Agent", layout="wide")
 st.title("🤖 AI Cash Flow Forecasting Agent for SMEs")
 
-# --- SIMULATED DATA FUNCTIONS ---
+# --- CREATE DEFAULT DATA IF NO FILE ---
+def load_sample_data():
+    # This creates data automatically so we don't need sample_data.csv
+    data = {
+        'Date': pd.date_range(start='2025-05-01', periods=4, freq='M'),
+        'Income': [5000, 5300, 4800, 5500],
+        'Expenses': [3000, 3100, 3500, 3200]
+    }
+    return pd.DataFrame(data)
+
 def load_bank_data():
     data = {
         'Date': pd.date_range(end=date.today(), periods=4, freq='M'),
@@ -26,12 +35,9 @@ def load_ecocash_data():
     }
     return pd.DataFrame(data)
 
-def load_sample_data():
-    return pd.read_csv("sample_data.csv")
-
-# --- SESSION STATE TO REMEMBER DATA ---
+# --- SESSION STATE ---
 if 'df' not in st.session_state:
-    st.session_state.df = load_sample_data()
+    st.session_state.df = load_sample_data() # <-- Uses default data now
 if 'data_source' not in st.session_state:
     st.session_state.data_source = 'Upload CSV/Excel'
 
@@ -44,8 +50,6 @@ data_source = st.sidebar.radio(
     key='source_radio'
 )
 st.session_state.data_source = data_source
-
-df = st.session_state.df
 
 if data_source == 'Upload CSV/Excel':
     uploaded_file = st.sidebar.file_uploader("Upload from Excel/Sheets", type=["csv", "xlsx"])
@@ -72,11 +76,9 @@ elif data_source == 'Manual Input Form':
             st.session_state.df = st.session_state.manual_df
             st.success("Row Added!")
             st.rerun()
-    df = st.session_state.df
 
 elif data_source == 'Connect Bank':
     st.sidebar.success("✅ Bank Account Connected - Demo Mode")
-    st.sidebar.info("In real app: Uses Bank API to pull transactions")
     if st.sidebar.button("🔄 Sync Latest Bank Transactions"):
         st.session_state.df = load_bank_data()
         st.success("Bank transactions synced!")
@@ -84,7 +86,6 @@ elif data_source == 'Connect Bank':
 
 elif data_source == 'Connect Ecocash':
     st.sidebar.success("✅ Ecocash Account Connected - Demo Mode")
-    st.sidebar.info("In real app: Uses Ecocash API to pull merchant payments")
     if st.sidebar.button("🔄 Sync Latest Ecocash Transactions"):
         st.session_state.df = load_ecocash_data()
         st.success("Ecocash transactions synced!")
@@ -113,12 +114,6 @@ tab0, tab1, tab2, tab3, tab4 = st.tabs([
 with tab0:
     st.header("A. Data Connectors / Inputs")
     st.write("**Current source:**", st.session_state.data_source)
-    col1, col2, col3, col4 = st.columns(4)
-    col1.success("1. Bank/API: Connected")
-    col2.info("2. Accounting: Quickbooks, Xero, Excel")
-    col3.warning("3. Invoice & AR/AP: Who Owes You")
-    col4.success("4. Manual Input: Cash Sales")
-    st.markdown("#### Current Data Table")
     st.dataframe(df, use_container_width=True)
 
 with tab1:
@@ -128,12 +123,10 @@ with tab1:
     col2.metric("Total Cash Out", f"${df['Expenses'].sum():,.2f}")
     col3.metric("Current Balance", f"${df['Cumulative Cash'].iloc[-1]:,.2f}")
     col4.metric("Projected 90 Days", f"${forecast_cumulative[-1]:,.2f}")
-
     fig1, ax1 = plt.subplots(figsize=(10,4))
     ax1.plot(df['Date'], df['Cumulative Cash'], label='Historical Balance')
     ax1.plot(forecast_df['Date'], forecast_df['Cumulative Cash'], label='AI Forecast 90 Days', linestyle='--', marker='x')
-    ax1.legend(); ax1.grid(True); ax1.set_ylabel("Amount ($)")
-    st.pyplot(fig1)
+    ax1.legend(); ax1.grid(True); st.pyplot(fig1)
 
 with tab2:
     st.header("🚨 AI Alerts")
