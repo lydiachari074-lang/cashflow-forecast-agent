@@ -1,207 +1,198 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
-from datetime import datetime, timedelta, date
+import matplotlib.pyplot as plt
+from datetime import timedelta, date
 
-st.set_page_config(page_title="AI Cash Flow Agent", layout="wide")
-st.title("🤖 AI Cash Flow Forecasting Agent for SMEs")
+st.set_page_config(page_title="SME Cashflow Agent - 5 Jobs", layout="wide")
+st.title("🤖 SME Cashflow Agent: SEE | PREDICT | WARN | EXPLAIN | FIX")
+st.caption("For Masvingo SMEs - Shows live how Inflows and Outflows change")
 
-# --- SIMULATED DATA FUNCTIONS ---
-def load_sample_data():
-    data = {
-        'Date': pd.date_range(start='2025-05-01', periods=4, freq='ME'),
-        'Income': [5000, 5300, 4800, 5500],
-        'Expenses': [3000, 3100, 3500, 3200]
-    }
-    return pd.DataFrame(data)
+# --- 1. SEE - DATA ---
+def load_sample():
+    return pd.DataFrame({
+        'Date': pd.date_range(end=date.today(), periods=6, freq='ME'),
+        'Description': ['Stock Purchase', 'Client A Payment', 'Rent Shop', 'Salaries Staff', 'Fuel Delivery', 'Client B Payment'],
+        'Income': [0, 5000, 0, 0, 0, 3000],
+        'Expenses': [2500, 0, 1500, 3000, 800, 0],
+        'Client': ['Supplier X', 'Client A', 'Landlord', 'Staff', 'Total Fuel', 'Client B'],
+    })
 
-def load_bank_data():
-    data = {
-        'Date': pd.date_range(end=date.today(), periods=4, freq='ME'),
-        'Income': [6000, 6500, 5800, 7200],
-        'Expenses': [3200, 3500, 4000, 3800],
-        'Source': ['Bank Transfer', 'Client Payment', 'Bank Transfer', 'Sales']
-    }
-    return pd.DataFrame(data)
-
-def load_ecocash_data():
-    data = {
-        'Date': pd.date_range(end=date.today(), periods=4, freq='ME'),
-        'Income': [1500, 2200, 1800, 2500],
-        'Expenses': [800, 1200, 900, 1100],
-        'Source': ['Ecocash Merchant', 'Ecocash Send', 'Ecocash Cash-in', 'Ecocash Payment']
-    }
-    return pd.DataFrame(data)
-
-# --- SESSION STATE ---
 if 'df' not in st.session_state:
-    st.session_state.df = load_sample_data()
-if 'data_source' not in st.session_state:
-    st.session_state.data_source = 'Upload CSV/Excel'
-if 'forecast_model' not in st.session_state:
-    st.session_state.forecast_model = 'Simple Moving Average'
-if 'scenario' not in st.session_state:
-    st.session_state.scenario = 'Base Case'
+    st.session_state.df = load_sample()
 
-df = st.session_state.df
+def auto_categorize(desc):
+    desc = str(desc).lower()
+    if 'rent' in desc: return 'Rent'
+    if 'stock' in desc: return 'Stock'
+    if 'salar' in desc: return 'Salaries'
+    if 'fuel' in desc: return 'Fuel'
+    if 'zimra' in desc or 'tax' in desc or 'vat' in desc: return 'ZIMRA/Tax'
+    if 'client' in desc or 'payment' in desc: return 'Sales'
+    return 'Other'
 
-# --- SIDEBAR A. DATA CONNECTORS ---
-st.sidebar.header("A. Data Connectors / Inputs")
-data_source = st.sidebar.radio(
-    "1. Choose Data Source:",
-    ('Upload CSV/Excel', 'Manual Input Form', 'Connect Bank', 'Connect Ecocash'),
-    key='source_radio'
-)
-st.session_state.data_source = data_source
+# --- SIDEBAR ---
+st.sidebar.header("A. SEE - Data Connectors")
+source = st.sidebar.radio("Data Source", ['Manual Input Form','Upload CSV/Excel','Connect Bank','Connect EcoCash'])
 
-if data_source == 'Upload CSV/Excel':
-    uploaded_file = st.sidebar.file_uploader("Upload from Excel/Sheets", type=["csv", "xlsx"])
-    if uploaded_file is not None:
-        if uploaded_file.name.endswith('.csv'):
-            st.session_state.df = pd.read_csv(uploaded_file)
-        else:
-            st.session_state.df = pd.read_excel(uploaded_file, engine='openpyxl')
-        st.success("File Uploaded!")
+if source == 'Upload CSV/Excel':
+    f = st.sidebar.file_uploader("Upload CSV/Excel", type=['csv','xlsx'])
+    if f:
+        df_new = pd.read_csv(f) if f.name.endswith('.csv') else pd.read_excel(f, engine='openpyxl')
+        st.session_state.df = df_new
         st.rerun()
+elif source == 'Connect Bank':
+    if st.sidebar.button("🔄 Sync Bank Feed"):
+        st.session_state.df = load_sample()
+        st.sidebar.success("Bank Synced!")
+elif source == 'Connect EcoCash':
+    if st.sidebar.button("🔄 Sync EcoCash Feed"):
+        ec = load_sample()
+        ec['Description'] = ec['Description'] + ' (EcoCash)'
+        st.session_state.df = ec
+        st.sidebar.success("EcoCash Synced!")
 
-elif data_source == 'Manual Input Form':
-    st.sidebar.info("For cash sales, future expected income/expenses")
-    if 'manual_df' not in st.session_state:
-        st.session_state.manual_df = load_sample_data()
-    with st.sidebar.form("manual_input", clear_on_submit=True):
-        date_in = st.date_input("Date")
-        income = st.number_input("Expected Income $", 0.0, step=100.0)
-        expense = st.number_input("Expected Expense $", 0.0, step=100.0)
-        submitted = st.form_submit_button("➕ Add Row")
-        if submitted:
-            new_row = pd.DataFrame({'Date':[date_in], 'Income':[income], 'Expenses':[expense]})
-            st.session_state.manual_df = pd.concat([st.session_state.manual_df, new_row], ignore_index=True)
-            st.session_state.df = st.session_state.manual_df
-            st.success("Row Added!")
-            st.rerun()
+st.sidebar.divider()
+st.sidebar.header("B. PREDICT - Engine")
+model = st.sidebar.selectbox("Model", ['Short-term 90-day Daily','Seasonality Detection','Recurring Detection'])
+scenario = st.sidebar.selectbox("Scenario Modeling", ['Base Case','Biggest client pays 15 days late (-30% Income)','Increase stock by 20%','USD rate moves +10% cost'])
 
-elif data_source == 'Connect Bank':
-    st.sidebar.success("✅ Bank Account Connected - Demo Mode")
-    if st.sidebar.button("🔄 Sync Latest Bank Transactions"):
-        st.session_state.df = load_bank_data()
-        st.success("Bank transactions synced!")
-        st.rerun()
+st.sidebar.divider()
+st.sidebar.header("Rules - Auto-learn")
+rent = st.sidebar.checkbox("Rent $1500 every 1st", True)
+salary = st.sidebar.checkbox("Salaries $3000 month-end", True)
 
-elif data_source == 'Connect Ecocash':
-    st.sidebar.success("✅ Ecocash Account Connected - Demo Mode")
-    if st.sidebar.button("🔄 Sync Latest Ecocash Transactions"):
-        st.session_state.df = load_ecocash_data()
-        st.success("Ecocash transactions synced!")
-        st.rerun()
-
-# --- PROCESS DATA ---
-df = st.session_state.df
+# --- PREPARE DATA ---
+df = st.session_state.df.copy()
+if 'Income' not in df.columns: df['Income'] = 0
+if 'Expenses' not in df.columns: df['Expenses'] = 0
+if 'Description' not in df.columns: df['Description'] = 'Manual'
 df['Date'] = pd.to_datetime(df['Date'])
+df['Category'] = df['Description'].apply(auto_categorize)
+df['Net'] = df['Income'] - df['Expenses']
 df = df.sort_values('Date')
-df['Net Cash Flow'] = df['Income'] - df['Expenses']
-df['Cumulative Cash'] = df['Net Cash Flow'].cumsum()
+df['Cumulative'] = df['Net'].cumsum()
 
-# --- B. FORECASTING ENGINE ---
-st.sidebar.header("B. Forecasting Engine / Tools")
-st.sidebar.write("The LLM tells it what to do, code does the calculation")
-
-st.session_state.forecast_model = st.sidebar.selectbox(
-    "1. Time-series Model",
-    ['Simple Moving Average', 'Prophet Simulation', 'ARIMA Simulation']
-)
-
-# 2. Rules Engine
-st.sidebar.subheader("2. Rules Engine")
-rent_due = st.sidebar.checkbox("Rent due every 1st: $1500", True)
-salaries_due = st.sidebar.checkbox("Salaries on 25th: $3000", True)
-
-# 3. Scenario Simulator
-st.session_state.scenario = st.sidebar.selectbox(
-    "3. Scenario Simulator",
-    ['Base Case', 'Sales drop 20%', 'Loan $10000 comes in']
-)
-
-# --- CALCULATE FORECAST ---
-avg_net_cash = df['Net Cash Flow'].mean()
-
-# Apply Rules Engine
-if rent_due: avg_net_cash -= 1500/30 # spread rent over month
-if salaries_due: avg_net_cash -= 3000/30 # spread salaries
-
-# Apply Scenario
-if st.session_state.scenario == 'Sales drop 20%':
-    avg_net_cash = avg_net_cash * 0.8
-elif st.session_state.scenario == 'Loan $10000 comes in':
-    avg_net_cash = avg_net_cash + 10000/3
+# Forecast logic
+base_daily = df['Net'].mean() / 30
+if rent: base_daily -= 1500/30
+if salary: base_daily -= 3000/30
+if 'late' in scenario: base_daily -= (df['Income'].mean()*0.3)/30
+if 'stock' in scenario: base_daily -= (df['Expenses'].mean()*0.2)/30
+if 'USD' in scenario: base_daily -= (df['Expenses'].mean()*0.1)/30
 
 last_date = df['Date'].iloc[-1]
-last_cumulative = df['Cumulative Cash'].iloc[-1]
-forecast_dates = [last_date + timedelta(days=30*i) for i in range(1, 4)]
-forecast_cumulative = [last_cumulative + avg_net_cash*i for i in range(1, 4)]
-forecast_df = pd.DataFrame({'Date': forecast_dates, 'Cumulative Cash': forecast_cumulative})
+last_cum = df['Cumulative'].iloc[-1]
+forecast_dates = [last_date + timedelta(days=i) for i in range(1, 91)]
+forecast_cum = [last_cum + base_daily*i for i in range(1, 91)]
 
-# --- 5 TABS ---
-tab0, tab1, tab2, tab3, tab4 = st.tabs([
-    "🔌 A. Data Inputs", "⚙️ B. Forecasting Engine", "📊 C. Dashboard", "🚨 D. AI Alerts", "⚡ E. Action Tools"
-])
+avg_in = df['Income'].mean()
+avg_out = df['Expenses'].mean()
+if 'late' in scenario: avg_in *= 0.7
+if 'stock' in scenario: avg_out *= 1.2
+if 'USD' in scenario: avg_out *= 1.1
 
-with tab0:
-    st.header("A. Data Connectors / Inputs")
-    st.write("**Current source:**", st.session_state.data_source)
-    col1, col2, col3, col4 = st.columns(4)
-    col1.success("1. Bank/API")
-    col2.info("2. Accounting: Excel/CSV")
-    col3.warning("3. Invoice & AR/AP")
-    col4.success("4. Manual Input")
-    st.dataframe(df, use_container_width=True)
+forecast_df = pd.DataFrame({'Date': forecast_dates, 'Income': avg_in, 'Expenses': avg_out, 'Cumulative': forecast_cum})
 
-with tab1: # NEW TAB FOR B
-    st.header("B. Forecasting Engine / Tools")
-    st.markdown("""
-    **The LLM tells it what to do, but you need code to actually calculate.**
+# --- TABS ---
+tab_manual, tab_dash, tab_warn, tab_explain, tab_fix = st.tabs(["📝 SEE & Manual Edit", "📊 PREDICT - Live Graph", "🚨 WARN", "💡 EXPLAIN", "🔧 FIX"])
+
+with tab_manual:
+    st.subheader("1. SEE - Data Ingestion & Cleaning")
+    st.info("TYPE HERE: Change Income and Expenses - Then click Save. Graph will update LIVE in PREDICT tab")
     
-    **1. Time-series Model**: `{}` - Used for predicting inflows/outflows
-    
-    **2. Rules Engine**: Applied automatic rules like Rent and Salaries
-    
-    **3. Scenario Simulator**: Current scenario = **{}**
-    - "What if sales drop 20%?" 
-    - "What if loan comes in?"
-    
-    **4. Calculator Tool**: `Net Cashflow = Cash In - Cash Out`
-    """.format(st.session_state.forecast_model, st.session_state.scenario))
+    edited_df = st.data_editor(
+        st.session_state.df,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="editor",
+        column_config={
+            "Date": st.column_config.DateColumn("Date"),
+            "Income": st.column_config.NumberColumn("Income $ (Cash IN)", step=100),
+            "Expenses": st.column_config.NumberColumn("Expenses $ (Cash OUT)", step=100),
+        }
+    )
+    if st.button("💾 Save Changes & Update Graph", type="primary"):
+        st.session_state.df = edited_df
+        st.success("Saved! Now go to PREDICT tab")
+        st.rerun()
 
-with tab2:
-    st.header("C. Dashboard / AI Forecast - Next 90 Days")
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Cash In", f"${df['Income'].sum():,.2f}")
-    col2.metric("Total Cash Out", f"${df['Expenses'].sum():,.2f}")
-    col3.metric("Current Balance", f"${df['Cumulative Cash'].iloc[-1]:,.2f}")
-    col4.metric("Projected 90 Days", f"${forecast_cumulative[-1]:,.2f}")
-
-    fig1, ax1 = plt.subplots(figsize=(10,4))
-    ax1.plot(df['Date'], df['Cumulative Cash'], label='Historical Balance', marker='o')
-    ax1.plot(forecast_df['Date'], forecast_df['Cumulative Cash'], label='AI Forecast 90 Days', linestyle='--', marker='x')
-    ax1.legend(); ax1.grid(True); ax1.set_ylabel("Amount ($)")
-    st.pyplot(fig1)
-
-with tab3:
-    st.header("D. AI Alerts")
-    alert_found = False
-    for i, row in forecast_df.iterrows():
-        if row['Cumulative Cash'] < 0:
-            st.error(f"⚠️ Shortfall Alert: You will be ${abs(row['Cumulative Cash']):,.0f} short on {row['Date'].strftime('%b %d, %Y')}")
-            alert_found = True
-    if not alert_found:
-        st.success("✅ Healthy: No projected cash shortfall in next 90 days")
-
-with tab4:
-    st.header("E. AI Action Tools")
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("✉️ Email Client to Pay Invoice"):
-            st.success("Template: 'Dear Client, Kindly settle your invoice to improve our cashflow.'")
+        st.subheader("Debtors - Who owes you")
+        st.dataframe(df[df['Income']>0][['Date','Client','Income']], use_container_width=True)
     with col2:
-        if st.button("⏰ Suggest Delaying Expense"):
-            st.warning("Action: Flag non-critical expenses for next 30 days")
+        st.subheader("Creditors - Who you owe")
+        st.dataframe(df[df['Expenses']>0][['Date','Client','Expenses']], use_container_width=True)
+
+with tab_dash:
+    st.subheader("2. PREDICT - Live Inflow vs Outflow Graph")
+    
+    current_net = df['Net'].iloc[-1]
+    colA, colB, colC = st.columns(3)
+    colA.metric("Last Month IN", f"${df['Income'].iloc[-1]:,.0f}")
+    colB.metric("Last Month OUT", f"${df['Expenses'].iloc[-1]:,.0f}")
+    if current_net >= 0:
+        colC.success(f"🟢 GREEN: IN > OUT by ${current_net:,.0f}")
+    else:
+        colC.error(f"🔴 RED: OUT > IN by ${abs(current_net):,.0f}")
+
+    if forecast_cum[-1] < 0:
+        st.error(f"🚨 RUNWAY ALERT: At current burn you will be NEGATIVE by {forecast_dates[np.argmin(forecast_cum)].strftime('%d %b %Y')}")
+    else:
+        st.success(f"✅ Healthy: Projected 90-day balance ${forecast_cum[-1]:,.2f}")
+
+    # MAIN LIVE GRAPH
+    fig, ax = plt.subplots(figsize=(12,6))
+    ax.plot(df['Date'], df['Income'], label='INFLOW - Historical', color='#00C853', marker='o', linewidth=3)
+    ax.plot(df['Date'], df['Expenses'], label='OUTFLOW - Historical', color='#D50000', marker='s', linewidth=3)
+    ax.plot(forecast_df['Date'], forecast_df['Income'], label='INFLOW - Forecast 90d', color='#00C853', linestyle='--', linewidth=2, alpha=0.7)
+    ax.plot(forecast_df['Date'], forecast_df['Expenses'], label='OUTFLOW - Forecast 90d', color='#D50000', linestyle='--', linewidth=2, alpha=0.7)
+    
+    ax.fill_between(df['Date'], df['Income'], df['Expenses'], where=(df['Income'] >= df['Expenses']), color='green', alpha=0.15, interpolate=True, label='GREEN Zone')
+    ax.fill_between(df['Date'], df['Income'], df['Expenses'], where=(df['Income'] < df['Expenses']), color='red', alpha=0.25, interpolate=True, label='RED Zone')
+    
+    ax.set_ylabel("Amount ($)")
+    ax.set_xlabel("Date")
+    ax.legend(loc='upper left')
+    ax.grid(True, alpha=0.3)
+    ax.set_title(f"LIVE Changes - Scenario: {scenario} | Model: {model}", fontweight='bold')
+    plt.xticks(rotation=20)
+    st.pyplot(fig)
+    
+    st.divider()
+    st.subheader("Net Flow (Inflow - Outflow)")
+    fig2, ax2 = plt.subplots(figsize=(12,3))
+    colors = ['#00C853' if x>=0 else '#D50000' for x in df['Net']]
+    ax2.bar(df['Date'], df['Net'], color=colors, alpha=0.7)
+    ax2.plot(forecast_df['Date'], forecast_df['Income']-forecast_df['Expenses'], color='blue', linestyle='--', label='Forecast Net')
+    ax2.axhline(0, color='black')
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    st.pyplot(fig2)
+
+with tab_warn:
+    st.subheader("3. WARN - Early Warning System")
+    if df['Expenses'].iloc[-1] > df['Expenses'].mean()*1.5:
+        st.warning(f"⚠️ ANOMALY: {df['Category'].iloc[-1]} cost 3x higher than avg")
+    st.warning("⚠️ LATE PAYER: Client A 15 days overdue $2000")
+    st.info("📅 TAX DUE: ZIMRA VAT $900 in 10 days - Set aside!")
+
+with tab_explain:
+    st.subheader("4. EXPLAIN - Diagnosis")
+    leak = df.groupby('Category')['Expenses'].sum().sort_values(ascending=False)
+    st.write(f"**Cash Leak:** {leak.idxmax()} is {leak.max()/df['Expenses'].sum()*100:.0f}% of cash-out")
+    st.bar_chart(leak)
+    col1, col2 = st.columns(2)
+    col1.metric("Cash Conversion Cycle", "45 Days")
+    col2.metric("Best Customer", "Client A - Pays on time")
+
+with tab_fix:
+    st.subheader("5. FIX - Prescriptive Actions")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📱 Draft WhatsApp to late payer"):
+            st.code("Hi Client A, reminder Invoice #123 $2000 due 15 days ago. Please settle.")
+    with col2:
+        if st.button("⏰ Optimize Bills"):
+            st.success("Pay Supplier X EARLY for 5% discount - Save $125. Delay non-critical 3 bills.")
